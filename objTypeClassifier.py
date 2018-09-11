@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 import os
 class ObjTypeClassifier:
-    def __init__(self,prototxt,weightfile,meanfile,gpu_id):
+    def __init__(self,prototxt,weightfile,meanfile=None,gpu_id=0,meanvalue=None):
         caffe.set_mode_gpu()
         caffe.set_device(gpu_id)
         self.__net = caffe.Net(prototxt,weightfile,caffe.TEST)
@@ -12,14 +12,18 @@ class ObjTypeClassifier:
         inputBlobShape =  self.__net.blobs['data'].data[0].shape
         self.__input_geometry = (inputBlobShape[-1],inputBlobShape[-2])
 
-        self.__getMean(meanfile)
+        self.__getMean(meanfile,meanvalue)
 
-    def __getMean(self,meanfile):
-        data = open(meanfile,'rb').read()
-        blob = caffe.proto.caffe_pb2.BlobProto()
-        blob.ParseFromString(data)
-        mean = np.array(caffe.io.blobproto_to_array(blob))[0]
-        mean = mean.mean(1).mean(1)
+    def __getMean(self,meanfile=None,meanvalue=None):
+        if meanfile:
+            data = open(meanfile,'rb').read()
+            blob = caffe.proto.caffe_pb2.BlobProto()
+            blob.ParseFromString(data)
+            mean = np.array(caffe.io.blobproto_to_array(blob))[0]
+            mean = mean.mean(1).mean(1)
+        else:
+            assert(len(meanvalue)==3)
+            mean = meanvalue
         self.__mean = np.array([[[mean[0],mean[1],mean[2]]]],dtype=np.float32)
 
     def __getInputBlob(self,im):
@@ -32,6 +36,13 @@ class ObjTypeClassifier:
         blob = blob.astype(np.float32)
 
         return blob
+
+    def extractFeature(self,im,featureBlobName):
+        self.__net.blobs['data'].data[...] = self.__getInputBlob(im)
+        self.__net.forward()
+        feature = self.__net.blobs[featureBlobName].data.flatten()
+
+        return feature
 
     def classify(self,im,featureBlobName):
         self.__net.blobs['data'].data[...] = self.__getInputBlob(im)
@@ -55,7 +66,7 @@ def run():
         im = cv2.imread(picDir+picName)
         #im = caffe.io.load_image(picDir+picName)
         result = classifier.classify(im,'fc7')
-        print result[0],"****************",result[1]
+        print (result[0],"****************",result[1])
         if cv2.waitKey(0)==27:
             break
 
